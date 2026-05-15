@@ -1,7 +1,4 @@
-"""
-Cliente Google Sheets — wrapper sobre gspread com cache e operações CRUD.
-Todas as leituras têm cache de 60 segundos para reduzir chamadas à API.
-"""
+"""Cliente Google Sheets com cache e operacoes CRUD."""
 
 import streamlit as st
 import gspread
@@ -14,31 +11,30 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
+SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
-def _get_client() -> gspread.Client:
+
+def _get_client():
     credenciais = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=SCOPES,
-    )
+        st.secrets["gcp_service_account"], scopes=SCOPES)
     return gspread.authorize(credenciais)
 
 
-def _get_sheet(nome_sheet: str) -> gspread.Worksheet:
+def _get_sheet(nome_sheet):
     cliente = _get_client()
-    nome_spreadsheet = st.secrets["app"]["sheet_name"]
     try:
-        spreadsheet = cliente.open(nome_spreadsheet)
+        spreadsheet = cliente.open_by_key(SPREADSHEET_ID)
         return spreadsheet.worksheet(nome_sheet)
-    except gspread.SpreadsheetNotFound:
-        st.error(f"Spreadsheet '{nome_spreadsheet}' não encontrado. Corre init_database() primeiro.")
-        st.stop()
     except gspread.WorksheetNotFound:
-        st.error(f"Worksheet '{nome_sheet}' não existe. Corre init_database() primeiro.")
+        st.error(f"Worksheet '{nome_sheet}' nao existe. Corre init_database() primeiro.")
+        st.stop()
+    except Exception as e:
+        st.error(f"Erro ao abrir spreadsheet: {e}")
         st.stop()
 
 
 @st.cache_data(ttl=60)
-def read_sheet(nome_sheet: str) -> pd.DataFrame:
+def read_sheet(nome_sheet):
     try:
         sheet = _get_sheet(nome_sheet)
         dados = sheet.get_all_records(default_blank="")
@@ -47,11 +43,11 @@ def read_sheet(nome_sheet: str) -> pd.DataFrame:
             return pd.DataFrame(columns=cabecalhos)
         return pd.DataFrame(dados)
     except Exception as e:
-        st.warning(f"Não foi possível ler '{nome_sheet}': {e}")
+        st.warning(f"Nao foi possivel ler '{nome_sheet}': {e}")
         return pd.DataFrame()
 
 
-def write_row(nome_sheet: str, linha: list) -> bool:
+def write_row(nome_sheet, linha):
     try:
         sheet = _get_sheet(nome_sheet)
         sheet.append_row(linha, value_input_option="USER_ENTERED")
@@ -62,7 +58,7 @@ def write_row(nome_sheet: str, linha: list) -> bool:
         return False
 
 
-def update_row(nome_sheet: str, row_index: int, dados: list) -> bool:
+def update_row(nome_sheet, row_index, dados):
     try:
         sheet = _get_sheet(nome_sheet)
         linha_real = row_index + 2
@@ -74,7 +70,7 @@ def update_row(nome_sheet: str, row_index: int, dados: list) -> bool:
         return False
 
 
-def delete_row(nome_sheet: str, row_index: int) -> bool:
+def delete_row(nome_sheet, row_index):
     try:
         sheet = _get_sheet(nome_sheet)
         linha_real = row_index + 2
@@ -86,7 +82,7 @@ def delete_row(nome_sheet: str, row_index: int) -> bool:
         return False
 
 
-def find_row(nome_sheet: str, coluna: str, valor) -> int | None:
+def find_row(nome_sheet, coluna, valor):
     df = read_sheet(nome_sheet)
     if df.empty or coluna not in df.columns:
         return None
@@ -96,40 +92,38 @@ def find_row(nome_sheet: str, coluna: str, valor) -> int | None:
     return int(resultado.index[0])
 
 
-def get_next_id(nome_sheet: str, coluna_id: str = "id") -> int:
+def get_next_id(nome_sheet, coluna_id="id"):
     df = read_sheet(nome_sheet)
     if df.empty or coluna_id not in df.columns:
         return 1
-    ids_existentes = pd.to_numeric(df[coluna_id], errors="coerce").dropna()
-    if ids_existentes.empty:
-        return 1
-    return int(ids_existentes.max()) + 1
+    ids = pd.to_numeric(df[coluna_id], errors="coerce").dropna()
+    return 1 if ids.empty else int(ids.max()) + 1
 
 
-def hoje_iso() -> str:
+def hoje_iso():
     return datetime.today().strftime("%Y-%m-%d")
 
 
-def hoje_pt() -> str:
+def hoje_pt():
     return datetime.today().strftime("%d/%m/%Y")
 
 
-def iso_para_pt(data_iso: str) -> str:
+def iso_para_pt(data_iso):
     try:
         return datetime.strptime(data_iso, "%Y-%m-%d").strftime("%d/%m/%Y")
     except Exception:
         return data_iso
 
 
-def pt_para_iso(data_pt: str) -> str:
+def pt_para_iso(data_pt):
     try:
         return datetime.strptime(data_pt, "%d/%m/%Y").strftime("%Y-%m-%d")
     except Exception:
         return data_pt
 
 
-def formatar_eur(valor) -> str:
+def formatar_eur(valor):
     try:
-        return f"€{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"\u20ac{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except Exception:
-        return "€0,00"
+        return "\u20ac0,00"
