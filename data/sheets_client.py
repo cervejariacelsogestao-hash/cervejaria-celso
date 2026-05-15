@@ -9,7 +9,8 @@ SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
 def _get_client():
-    info = dict(st.secrets["gcp_service_account"])
+    info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
+    info["private_key"] = info["private_key"].replace("\\n", "\n")
     return gspread.service_account_from_dict(info)
 
 
