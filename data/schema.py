@@ -49,13 +49,22 @@ def _get_client():
 def init_database(verbose=True):
     cliente = _get_client()
     resultado = {}
+
     try:
         spreadsheet = cliente.open_by_key(SPREADSHEET_ID)
         if verbose:
-            st.info(f"Sheet encontrado: {spreadsheet.title}")
+            st.success(f"Sheet encontrado: {spreadsheet.title}")
+    except gspread.exceptions.APIError as e:
+        resp = getattr(e, 'response', None)
+        status = resp.status_code if resp else 'N/A'
+        body = resp.text[:300] if resp else str(e)
+        if verbose:
+            st.error(f"Google API Error {status}: {body}")
+            st.warning("Confirma que o Sheet foi partilhado com: celso-gestao@cervejaria-celso.iam.gserviceaccount.com (Editor)")
+        return {}
     except Exception as e:
         if verbose:
-            st.error(f"Erro ao abrir sheet: {e}. Partilha o Sheet com celso-gestao@cervejaria-celso.iam.gserviceaccount.com")
+            st.error(f"Erro ({type(e).__name__}): {repr(e)}")
         return {}
 
     sheets_existentes = [ws.title for ws in spreadsheet.worksheets()]
@@ -76,7 +85,7 @@ def init_database(verbose=True):
         except Exception as e:
             resultado[nome_ws] = f"erro: {e}"
             if verbose:
-                st.error(f"  ERRO {nome_ws}: {e}")
+                st.error(f"  ERRO {nome_ws}: {repr(e)}")
 
     try:
         spreadsheet.del_worksheet(spreadsheet.worksheet("Sheet1"))
