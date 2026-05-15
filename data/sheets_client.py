@@ -9,9 +9,17 @@ SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
 def _get_client():
+    from google.oauth2.service_account import Credentials
     info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
     info["private_key"] = info["private_key"].replace("\\n", "\n")
-    return gspread.service_account_from_dict(info)
+    creds = Credentials.from_service_account_info(
+        info,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+    )
+    return gspread.Client(auth=creds)
 
 
 def _get_sheet(nome_sheet):
@@ -20,10 +28,10 @@ def _get_sheet(nome_sheet):
         sp = gc.open_by_key(SPREADSHEET_ID)
         return sp.worksheet(nome_sheet)
     except gspread.WorksheetNotFound:
-        st.error(f"Worksheet '{nome_sheet}' nao existe.")
+        st.error(f"Worksheet nao existe: {nome_sheet}")
         st.stop()
     except Exception as e:
-        st.error(f"Erro sheet '{nome_sheet}': {repr(e)}")
+        st.error(f"Erro sheet: {type(e).__name__}: {repr(e)}")
         st.stop()
 
 
@@ -36,7 +44,7 @@ def read_sheet(nome_sheet):
             return pd.DataFrame(columns=sheet.row_values(1))
         return pd.DataFrame(dados)
     except Exception as e:
-        st.warning(f"Erro ler '{nome_sheet}': {e}")
+        st.warning(f"Erro ler {nome_sheet}: {e}")
         return pd.DataFrame()
 
 
@@ -89,28 +97,19 @@ def get_next_id(nome_sheet, coluna_id="id"):
 def hoje_iso():
     return datetime.today().strftime("%Y-%m-%d")
 
-
 def hoje_pt():
     return datetime.today().strftime("%d/%m/%Y")
 
-
 def iso_para_pt(d):
-    try:
-        return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y")
-    except Exception:
-        return d
-
+    try: return datetime.strptime(d, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except: return d
 
 def pt_para_iso(d):
-    try:
-        return datetime.strptime(d, "%d/%m/%Y").strftime("%Y-%m-%d")
-    except Exception:
-        return d
-
+    try: return datetime.strptime(d, "%d/%m/%Y").strftime("%Y-%m-%d")
+    except: return d
 
 def formatar_eur(v):
     try:
-        s = f"{float(v):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        s = f"{float(v):,.2f}".replace(",","X").replace(".",",").replace("X",".")
         return f"EUR {s}"
-    except Exception:
-        return "EUR 0,00"
+    except: return "EUR 0,00"
