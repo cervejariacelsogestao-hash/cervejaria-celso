@@ -36,9 +36,17 @@ SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
 def _get_client():
+    from google.oauth2.service_account import Credentials
     info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
     info["private_key"] = info["private_key"].replace("\\n", "\n")
-    return gspread.service_account_from_dict(info)
+    creds = Credentials.from_service_account_info(
+        info,
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ]
+    )
+    return gspread.Client(auth=creds)
 
 
 def init_database(verbose=True):
