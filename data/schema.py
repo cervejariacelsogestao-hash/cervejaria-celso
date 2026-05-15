@@ -1,6 +1,4 @@
-"""
-Schema da base de dados — define e cria as 16 worksheets do Google Sheet.
-"""
+"""Schema da base de dados."""
 
 import streamlit as st
 import gspread
@@ -11,7 +9,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-SCHEMA: dict[str, list[str]] = {
+SCHEMA = {
     "config": ["chave", "valor", "descricao"],
     "users": ["email", "nome", "role", "activo", "password_hash"],
     "ingredientes": ["id", "nome", "categoria", "unidade_base", "preco_actual_eur_unidade", "fornecedor_principal_id", "data_ultima_atualizacao", "merma_pct"],
@@ -31,90 +29,70 @@ SCHEMA: dict[str, list[str]] = {
 }
 
 CONFIG_INICIAL = [
-    ["food_cost_target_pct", "33", "Target de food cost em percentagem"],
-    ["labor_cost_target_pct", "30", "Target de labor cost em percentagem"],
-    ["prime_cost_target_pct", "63", "Target de prime cost (food+labor) em percentagem"],
-    ["iva_comida_pct", "13", "IVA aplicável a comida (%)"],
-    ["iva_bebida_alc_pct", "23", "IVA aplicável a bebidas alcoólicas (%)"],
-    ["iva_bebida_nalc_pct", "23", "IVA aplicável a bebidas não alcoólicas (%)"],
-    ["ticket_medio_target_eur", "30", "Target de ticket médio em euros"],
-    ["discrepancia_caixa_alerta_pct", "2", "Percentagem de discrepância que dispara alerta"],
-    ["email_alertas", "cervejariacelsogestao@gmail.com", "Email para alertas"],
-    ["nome_restaurante", "Cervejaria do Celso", "Nome do restaurante"],
+    ["food_cost_target_pct", "33", "Target food cost %"],
+    ["labor_cost_target_pct", "30", "Target labor cost %"],
+    ["ticket_medio_target_eur", "30", "Target ticket medio euros"],
+    ["discrepancia_caixa_alerta_pct", "2", "Alerta discrepancia caixa %"],
+    ["email_alertas", "cervejariacelsogestao@gmail.com", "Email alertas"],
+    ["nome_restaurante", "Cervejaria do Celso", "Nome"],
     ["morada", "Campo de Ourique, Lisboa", "Morada"],
 ]
 
-
-def _get_client() -> gspread.Client:
-    credenciais = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=SCOPES,
-    )
-    return gspread.authorize(credenciais)
+SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
-def init_database(verbose: bool = True) -> dict:
-    nome_sheet = st.secrets["app"]["sheet_name"]
+def _get_client():
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    return gspread.authorize(creds)
+
+
+def init_database(verbose=True):
     cliente = _get_client()
     resultado = {}
-
     try:
-        spreadsheet = cliente.open(nome_sheet)
+        spreadsheet = cliente.open_by_key(SPREADSHEET_ID)
         if verbose:
-            st.info(f"Spreadsheet '{nome_sheet}' já existe. A verificar worksheets...")
-    except gspread.SpreadsheetNotFound:
-        spreadsheet = cliente.create(nome_sheet)
-        email_admin = st.secrets["app"]["admin_email"]
-        spreadsheet.share(email_admin, perm_type="user", role="writer")
+            st.info(f"Sheet encontrado: {spreadsheet.title}")
+    except Exception as e:
         if verbose:
-            st.success(f"Spreadsheet '{nome_sheet}' criado e partilhado com {email_admin}")
+            st.error(f"Erro ao abrir sheet: {e}. Partilha o Sheet com celso-gestao@cervejaria-celso.iam.gserviceaccount.com")
+        return {}
 
     sheets_existentes = [ws.title for ws in spreadsheet.worksheets()]
 
     for nome_ws, cabecalhos in SCHEMA.items():
         try:
             if nome_ws in sheets_existentes:
-                resultado[nome_ws] = "já existe"
+                resultado[nome_ws] = "ja existe"
                 if verbose:
-                    st.write(f"  ⏭ {nome_ws} — já existe")
+                    st.write(f"  skip {nome_ws}")
             else:
-                ws = spreadsheet.add_worksheet(title=nome_ws, rows=1000, cols=len(cabecalhos) + 2)
+                ws = spreadsheet.add_worksheet(title=nome_ws, rows=1000, cols=len(cabecalhos)+2)
                 ws.append_row(cabecalhos, value_input_option="USER_ENTERED")
                 ws.format("1:1", {"textFormat": {"bold": True}})
                 resultado[nome_ws] = "criada"
                 if verbose:
-                    st.write(f"  ✅ {nome_ws} — criada")
+                    st.write(f"  OK {nome_ws}")
         except Exception as e:
             resultado[nome_ws] = f"erro: {e}"
             if verbose:
-                st.error(f"  ❌ {nome_ws} — erro: {e}")
+                st.error(f"  ERRO {nome_ws}: {e}")
 
     try:
-        sheet1 = spreadsheet.worksheet("Sheet1")
-        spreadsheet.del_worksheet(sheet1)
+        spreadsheet.del_worksheet(spreadsheet.worksheet("Sheet1"))
     except Exception:
         pass
 
     try:
         ws_config = spreadsheet.worksheet("config")
-        dados_actuais = ws_config.get_all_records()
-        if not dados_actuais:
+        if not ws_config.get_all_records():
             for linha in CONFIG_INICIAL:
                 ws_config.append_row(linha)
-            if verbose:
-                st.success("Configurações iniciais criadas.")
-    except Exception as e:
-        if verbose:
-            st.warning(f"Não foi possível popular config: {e}")
+    except Exception:
+        pass
 
     return resultado
 
 
-def get_spreadsheet_url() -> str:
-    nome_sheet = st.secrets["app"]["sheet_name"]
-    cliente = _get_client()
-    try:
-        spreadsheet = cliente.open(nome_sheet)
-        return spreadsheet.url
-    except Exception:
-        return ""
+def get_spreadsheet_url():
+    return f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit"
