@@ -1,7 +1,8 @@
-"""Schema da base de dados."""
+"""Schema da base de dados — diagnostico detalhado."""
 
 import streamlit as st
 import gspread
+import requests as req_lib
 
 SCHEMA = {
     "config": ["chave", "valor", "descricao"],
@@ -35,32 +36,74 @@ CONFIG_INICIAL = [
 SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
-def _get_client():
+def _get_creds():
     from google.oauth2.service_account import Credentials
+    from google.auth.transport.requests import Request
     info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
     info["private_key"] = info["private_key"].replace("\\n", "\n")
     creds = Credentials.from_service_account_info(
         info,
-        scopes=[
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive",
-        ]
+        scopes=["https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"]
     )
+    creds.refresh(Request())
+    return creds
+
+
+def _get_client():
+    creds = _get_creds()
     return gspread.Client(auth=creds)
 
 
 def init_database(verbose=True):
     resultado = {}
+
+    # Passo 1: testar autenticacao com chamada directa
+    if verbose:
+        st.write("**Passo 1**: A testar autenticacao...")
+    try:
+        creds = _get_creds()
+        token = creds.token
+        if verbose:
+            st.write(f"  Token obtido: {token[:20]}...")
+    except Exception as e:
+        if verbose:
+            st.error(f"  Falha auth: {type(e).__name__}: {repr(e)}")
+        return {}
+
+    # Passo 2: testar acesso ao sheet via Sheets API directa
+    if verbose:
+        st.write("**Passo 2**: A testar acesso ao Sheet...")
+    try:
+        resp = req_lib.get(
+            f"https://sheets.googleapis.com/v4/spreadsheets/{SPREADSHEET_ID}?fields=title",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        if verbose:
+            st.write(f"  HTTP {resp.status_code}: {resp.text[:200]}")
+        if resp.status_code != 200:
+            return {}
+    except Exception as e:
+        if verbose:
+            st.error(f"  Falha HTTP: {repr(e)}")
+        return {}
+
+    # Passo 3: abrir via gspread
+    if verbose:
+        st.write("**Passo 3**: A abrir via gspread...")
     try:
         gc = _get_client()
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         if verbose:
-            st.success(f"Ligado: {spreadsheet.title}")
+            st.success(f"  Ligado: {spreadsheet.title}")
     except Exception as e:
         if verbose:
-            st.error(f"Erro ({type(e).__name__}): {repr(e)}")
+            st.error(f"  Falha gspread: {type(e).__name__}: {repr(e)}")
         return {}
 
+    # Passo 4: criar worksheets
+    if verbose:
+        st.write("**Passo 4**: A criar worksheets...")
     sheets_existentes = [ws.title for ws in spreadsheet.worksheets()]
     for nome_ws, cabecalhos in SCHEMA.items():
         try:
@@ -69,7 +112,6 @@ def init_database(verbose=True):
             else:
                 ws = spreadsheet.add_worksheet(title=nome_ws, rows=1000, cols=len(cabecalhos)+2)
                 ws.append_row(cabecalhos, value_input_option="USER_ENTERED")
-                ws.format("1:1", {"textFormat": {"bold": True}})
                 resultado[nome_ws] = "criada"
                 if verbose: st.write(f"  OK {nome_ws}")
         except Exception as e:
