@@ -2,12 +2,6 @@
 
 import streamlit as st
 import gspread
-from google.oauth2.service_account import Credentials
-
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
 
 SCHEMA = {
     "config": ["chave", "valor", "descricao"],
@@ -42,26 +36,18 @@ SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
 def _get_client():
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
-    return gspread.authorize(creds)
+    """Usa service_account_from_dict — API correcta para gspread v6."""
+    info = dict(st.secrets["gcp_service_account"])
+    return gspread.service_account_from_dict(info)
 
 
 def init_database(verbose=True):
-    cliente = _get_client()
     resultado = {}
-
     try:
-        spreadsheet = cliente.open_by_key(SPREADSHEET_ID)
+        gc = _get_client()
+        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         if verbose:
-            st.success(f"Sheet encontrado: {spreadsheet.title}")
-    except gspread.exceptions.APIError as e:
-        resp = getattr(e, 'response', None)
-        status = resp.status_code if resp else 'N/A'
-        body = resp.text[:300] if resp else str(e)
-        if verbose:
-            st.error(f"Google API Error {status}: {body}")
-            st.warning("Confirma que o Sheet foi partilhado com: celso-gestao@cervejaria-celso.iam.gserviceaccount.com (Editor)")
-        return {}
+            st.success(f"Ligado ao Sheet: {spreadsheet.title}")
     except Exception as e:
         if verbose:
             st.error(f"Erro ({type(e).__name__}): {repr(e)}")
@@ -72,20 +58,15 @@ def init_database(verbose=True):
     for nome_ws, cabecalhos in SCHEMA.items():
         try:
             if nome_ws in sheets_existentes:
-                resultado[nome_ws] = "ja existe"
-                if verbose:
-                    st.write(f"  skip {nome_ws}")
+                if verbose: st.write(f"  skip {nome_ws}")
             else:
                 ws = spreadsheet.add_worksheet(title=nome_ws, rows=1000, cols=len(cabecalhos)+2)
                 ws.append_row(cabecalhos, value_input_option="USER_ENTERED")
                 ws.format("1:1", {"textFormat": {"bold": True}})
+                if verbose: st.write(f"  OK {nome_ws}")
                 resultado[nome_ws] = "criada"
-                if verbose:
-                    st.write(f"  OK {nome_ws}")
         except Exception as e:
-            resultado[nome_ws] = f"erro: {e}"
-            if verbose:
-                st.error(f"  ERRO {nome_ws}: {repr(e)}")
+            if verbose: st.error(f"  ERRO {nome_ws}: {repr(e)}")
 
     try:
         spreadsheet.del_worksheet(spreadsheet.worksheet("Sheet1"))
