@@ -36,8 +36,8 @@ SPREADSHEET_ID = "16PwHAXMd_4khP1kAZ2lfxEwd_d8BDM3WY2yYixJG9Lw"
 
 
 def _get_client():
-    """Usa service_account_from_dict — API correcta para gspread v6."""
-    info = dict(st.secrets["gcp_service_account"])
+    info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
+    info["private_key"] = info["private_key"].replace("\\n", "\n")
     return gspread.service_account_from_dict(info)
 
 
@@ -47,14 +47,13 @@ def init_database(verbose=True):
         gc = _get_client()
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
         if verbose:
-            st.success(f"Ligado ao Sheet: {spreadsheet.title}")
+            st.success(f"Ligado: {spreadsheet.title}")
     except Exception as e:
         if verbose:
             st.error(f"Erro ({type(e).__name__}): {repr(e)}")
         return {}
 
     sheets_existentes = [ws.title for ws in spreadsheet.worksheets()]
-
     for nome_ws, cabecalhos in SCHEMA.items():
         try:
             if nome_ws in sheets_existentes:
@@ -63,8 +62,8 @@ def init_database(verbose=True):
                 ws = spreadsheet.add_worksheet(title=nome_ws, rows=1000, cols=len(cabecalhos)+2)
                 ws.append_row(cabecalhos, value_input_option="USER_ENTERED")
                 ws.format("1:1", {"textFormat": {"bold": True}})
-                if verbose: st.write(f"  OK {nome_ws}")
                 resultado[nome_ws] = "criada"
+                if verbose: st.write(f"  OK {nome_ws}")
         except Exception as e:
             if verbose: st.error(f"  ERRO {nome_ws}: {repr(e)}")
 
